@@ -10,8 +10,8 @@ from nonebot.adapters import Message
 from nonebot.params import CommandArg
 from nonebot.log import logger
 from nonebot.rule import Rule,to_me
-from nonebot.plugin import Plugin
-from nonebot import on_command, require, on_message
+from nonebot.plugin import Plugin,PluginMetadata
+from nonebot import on_command, require
 from nonebot.adapters.onebot.v11 import (
     Message,
     MessageEvent,
@@ -23,6 +23,19 @@ from nonebot import get_driver, get_plugin_config
 
 require("nonebot_plugin_saa")
 from nonebot_plugin_saa import Text
+
+__plugin_meta__ = PluginMetadata(
+    name="LLM调用nonebot插件",
+    description="通过LLM结合语境调用已安装的nonebot插件，实现更拟人和自然机器人聊天风格",
+    usage="""
+    @机器人触发
+    """,
+    config=Config,
+    extra={},
+    type="application",
+    homepage="https://github.com/Alpaca4610/nonebot_plugin_llm_plugins_call",
+    supported_adapters={"~onebot.v11"},
+)
 
 driver = get_driver()
 config = nonebot.get_driver().config
@@ -44,7 +57,7 @@ model_id = plugin_config.plugins_call_llm
 
 
 default_blacklist = ["nonebot_plugin_saa", "nonebot_plugin_apscheduler", "nonebot_plugin_localstore", "nonebot_plugin_htmlrender",
-             "nonebot_plugin_tortoise_orm", "nonebot_plugin_alconna.uniseg", "nonebot_plugin_cesaa", "nonebot_plugin_session_saa", "nonebot_plugin_orm"]
+             "nonebot_plugin_tortoise_orm", "nonebot_plugin_alconna.uniseg", "nonebot_plugin_cesaa", "nonebot_plugin_session_saa", "nonebot_plugin_orm","nonebot_plugin_llm_plugins_call"]
 blacklist = default_blacklist + plugin_config.plugins_call_blacklist
 
 def modify_string(input_str, new_string):
@@ -108,8 +121,6 @@ def generate_tools_json(plugin_set, blacklist=None):
 @driver.on_startup
 async def do_something():
     plugins: set[Plugin] = nonebot.get_loaded_plugins()
-    # for p in plugins:
-    #     print(p.module_name)
     global tools
     tools = generate_tools_json(plugins)
 
@@ -158,26 +169,34 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
             select_plugin: Plugin | None = nonebot.get_plugin_by_module_name(
                 func1_name)
 
-            # print(select_plugin)
-
             select_plugin_matcher = getattr(select_plugin, 'matcher', [])
             rules = []
+            count = 0
             for m in select_plugin_matcher:
                 rule = getattr(m, 'rule', None)
+                is_tome = ""
+                call_ = ""
                 if rule:
-                    rules.append(rule)
+                    for checker in rule.checkers:
+                        call = checker.call
+                        if str(call) == "ToMe()":
+                            is_tome = "，需要@触发，请在最终命令前加上@"
+                            continue
+                        call_ += str(call)  
+                    rule_str_ = f"命令{count}:触发规则:{call_}{is_tome}"
+                    rules.append(rule_str_)
+                    count += 1
 
             if not rules:
                 return
             rule_str = str(rules)
 
             select_tools = [create_tool_entry(func1_name, select_plugin.metadata.description +
-                                              f"\n功能描述：{select_plugin.metadata.usage}", command_desc=f"\nRule:{rule_str}")]
+                                              f"\n功能描述：{select_plugin.metadata.usage}", command_desc=f"Rule：\n {rule_str}")]
             # print(select_tools)
 
-            messages_ = [{'role': 'user', 'content': f"请你分析用户的自然语言，结合提供的tool(插件)，提取自然语言中用于触发该插件的参数，构造纯文本插件触发命令。注意必须要使用tools_call功能.插件的功能描述和命令匹配规则Rule已经提供，需要你构造出能够精准触发该插件的命令。一个插件可能包含多个命令匹配规则，可能对应该插件的几种不同功能，请你选择最合适的。若插件的Rule带有call=ToMe()或者插件功能描述里面写了@机器人才能触发,表明该插件还需要使用@触发，这种情况你应该排除功能描述里@对命令文本构造带来的影响,此时请你在命令文本前加上@就代表@触发了。以Rule为准来构造命令，只有符合Rule的规范才能触发插件，需要特别注意前缀问题。由于各插件的插件的功能描述里面可能带有默认前缀斜杠或者其他前缀，不同用户的前缀可能设定不一致，有的用户可能删除了命令前缀或者换成别的前缀(可以为空)，所以不能只根据命令用法构造命令，应该结合Rule和当前用户设置的命令前缀来构造最终的触发命令文本。每条命令的格式为前缀 + 符合Rule的字符串。\n当前用户设置的前缀为(前缀使用<prefix></prefix>包裹):<prefix>" + str(prefix) + f"</prefix>\n 用户的自然语言为：{content}"}]
+            messages_ = [{'role': 'user', 'content': f"""分析用户的自然语言，结合提供的tool(插件)，从自然语言中提取用于触发该插件的参数，结合参数构造纯文本触发命令。插件的功能描述和命令触发规则已经提供，需要你分析功能描述，结合命令触发规则构造规则出带参数的能够精准触发该插件的命令。一个插件可能有对应不同功能的多条命令匹配规则，请你选择最合适的。参考功能介绍，结合用户自然语言中暗含的参数来构造命令（提取的参数最贴近用户的自然语言中的语义），并且最终构造的命令要符合触发规则规则。需要特别注意前缀问题，由于各插件的插件的功能描述里面可能带有默认前缀斜杠或者其他前缀，不同用户的前缀可能设定不一致，有的用户可能删除了命令前缀或者换成别的前缀(可以为空)，所以不能只根据命令用法构造命令，必须结合规则和当前用户设置的命令前缀来构造最终的触发命令文本。每条命令的格式为：前缀 + 满足触发规则的带参数的字符串。你必须使用tools_call功能，在调用的工具的参数里面回复我，不能直接回复我。\n当前用户设置的前缀为(前缀使用<prefix></prefix>包裹):<prefix>" + str(prefix) + f"</prefix>\n 用户的自然语言为：{content}"""}]
 
-        # messages_ = [{'role': 'user', 'content': f"请你分析用户自然的语言，结合提供的tool(插件)，提取自然语言中用于触发该插件的参数，构造纯文本插件触发命令。 插件的功能描述和命令匹配规则Rule已经提供，需要你构造出能够精准触发该插件的命令。一个插件可能包含多个命令匹配规则，可能对应该插件的几种不同功能，请你选择最合适的。若插件的Rule带有call=ToMe()，表明该插件还需要使用@触发，这种情况下请你在命令文本前加上@。功能描述只是辅助进行触发的功能，请你忽略功能描述中命令所带的前缀（由于各插件的插件的功能描述里面可能带有默认前缀斜杠或者其他前缀，不同用户的前缀可能设定不一致，有的用户可能删除了命令前缀或者换成别的前缀(可以为空)，所以不能只根据功能描述构造命令），需要完全按照Rule来构造命令，只有符合Rule的规范才能触发插件，需要特别注意前缀问题。应该结合Rule和当前用户设置的命令前缀来构造最终的触发命令文本。\n 用户的自然语言为：{content}"}]
 
             response_ = await client.chat.completions.create(
                 model=model_id,
@@ -188,7 +207,7 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
                 tools=select_tools
             )
 
-            logger.info(response_)
+            # logger.info(response_)
             if hasattr(message, 'tool_calls') and message.tool_calls:
                 func1_args = response_.choices[0].message.tool_calls[0].function.arguments
                 data = json.loads(func1_args)
@@ -219,7 +238,7 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
                 new_event.raw_message = modify_string(
                     new_event.raw_message, func1_args)
 
-                logger.info(new_event.get_message)
+                ## info(new_event.get_message)
                 await Text(" plugin_call调用nonebot插件：" + str(select_plugin.name)).send(at_sender=True)
                 asyncio.create_task(bot.handle_event(new_event))
                 return

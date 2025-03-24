@@ -3,9 +3,11 @@ import copy
 import json
 import nonebot
 import re
+import yaml
 
 from openai import AsyncOpenAI
 from .config import Config, ConfigError
+from typing import Any, Dict
 from nonebot.adapters import Message
 from nonebot.params import CommandArg
 from nonebot.log import logger
@@ -28,7 +30,7 @@ __plugin_meta__ = PluginMetadata(
     name="LLM调用nonebot插件",
     description="通过LLM结合语境调用已安装的nonebot插件，实现更拟人和自然机器人聊天风格",
     usage="""
-    @机器人触发
+    @机器人即可
     """,
     config=Config,
     extra={},
@@ -55,6 +57,22 @@ else:
 
 model_id = plugin_config.plugins_call_llm
 
+# 初始化插件信息字典
+new_plugin_info: Dict[str, Any] = {}
+
+def load_plugin_data(json_path: str) -> Dict[str, Any]:
+    try:
+        if not json_path:
+            return {}
+            
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+            return {item["module_name"]: item for item in data if "module_name" in item}
+            
+    except Exception as e:
+        return {}
+
+    
 
 default_blacklist = ["nonebot_plugin_saa", "nonebot_plugin_apscheduler", "nonebot_plugin_localstore", "nonebot_plugin_htmlrender",
              "nonebot_plugin_tortoise_orm", "nonebot_plugin_alconna.uniseg", "nonebot_plugin_cesaa", "nonebot_plugin_session_saa", "nonebot_plugin_orm","nonebot_plugin_llm_plugins_call"]
@@ -91,22 +109,24 @@ def generate_tools_json(plugin_set, blacklist=None):
 
     tools = []
 
+    load_plugin_data(plugin_config.plugins_call_metadata_file)
+    
+    
     for plugin in plugin_set:
         if plugin.module_name in blacklist:
             continue
 
-        metadata = getattr(plugin, 'metadata', None)
+        new_meta = new_plugin_info.get(plugin.module_name, {})
         matcher = getattr(plugin, 'matcher', [])
-
-        if not metadata or not matcher:
+        if not matcher:
             continue
 
-        description = getattr(metadata, 'description', None)
+        description = new_meta.get("description") or getattr(
+            getattr(plugin, 'metadata', None), 'description', None
+        )
         if not description:
             continue
 
-        # usage = getattr(metadata, 'usage', '')
-        # command_desc = f"功能描述：{usage}"
 
         tool = create_tool_entry(
             plugin.module_name,
@@ -127,7 +147,7 @@ async def do_something():
 
 
 async def to_me_rule(event: GroupMessageEvent) -> bool:
-    if str(event.message_seq) == "":
+    if event.message_seq is None:
         return False
     return True
 
@@ -169,6 +189,17 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
             select_plugin: Plugin | None = nonebot.get_plugin_by_module_name(
                 func1_name)
 
+
+            new_meta = new_plugin_info.get(func1_name, {})
+    
+
+            description = new_meta.get("description") or getattr(
+                getattr(select_plugin, 'metadata', None), 'description', ""
+            )
+            usage = new_meta.get("usage", "") or getattr(
+                getattr(select_plugin, 'metadata', None), 'usage', ""
+            )
+
             select_plugin_matcher = getattr(select_plugin, 'matcher', [])
             rules = []
             count = 0
@@ -187,13 +218,14 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
                     rules.append(rule_str_)
                     count += 1
 
-            if not rules:
-                return
-            rule_str = str(rules)
-
-            select_tools = [create_tool_entry(func1_name, select_plugin.metadata.description +
-                                              f"\n功能描述：{select_plugin.metadata.usage}", command_desc=f"Rule：\n {rule_str}")]
-            # print(select_tools)
+            if rules:
+                rule_str = "\n".join(rules)
+                full_desc = f"{description}\n功能描述：{usage}".strip()
+                select_tools = [create_tool_entry(
+                    func1_name, 
+                    full_desc,
+                    command_desc=f"触发规则：\n{rule_str}"
+                )]
 
             messages_ = [{'role': 'user', 'content': f"""分析用户的自然语言，结合提供的tool(插件)，从自然语言中提取用于触发该插件的参数，结合参数构造纯文本触发命令。插件的功能描述和命令触发规则已经提供，需要你分析功能描述，结合命令触发规则构造规则出带参数的能够精准触发该插件的命令。一个插件可能有对应不同功能的多条命令匹配规则，请你选择最合适的。参考功能介绍，结合用户自然语言中暗含的参数来构造命令（提取的参数最贴近用户的自然语言中的语义），并且最终构造的命令要符合触发规则规则。需要特别注意前缀问题，由于各插件的插件的功能描述里面可能带有默认前缀斜杠或者其他前缀，不同用户的前缀可能设定不一致，有的用户可能删除了命令前缀或者换成别的前缀(可以为空)，所以不能只根据命令用法构造命令，必须结合规则和当前用户设置的命令前缀来构造最终的触发命令文本。每条命令的格式为：前缀 + 满足触发规则的带参数的字符串。你必须使用tools_call功能，在调用的工具的参数里面回复我，不能直接回复我。\n当前用户设置的前缀为(前缀使用<prefix></prefix>包裹):<prefix>" + str(prefix) + f"</prefix>\n 用户的自然语言为：{content}"""}]
 

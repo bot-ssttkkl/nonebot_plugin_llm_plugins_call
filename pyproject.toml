@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nonebot-plugin-llm-plugins-call"
-version = "0.0.1"
+version = "0.1.0"
 description = "LLM选择调用nonebot插件"
 authors = ["Alpaca <202396298@qq.com>"]
 license = "MIT"
@@ -12,6 +12,7 @@ nonebot2 = "^2.2.0"
 nonebot-adapter-onebot = "^2.2.1"
 openai = "^1.55.3"
 nonebot-plugin-send-anything-anywhere = "^0.7.1"
+pyyaml = "^6.0.2"
 
 [[tool.poetry.source]]
 name = "tsinghua"

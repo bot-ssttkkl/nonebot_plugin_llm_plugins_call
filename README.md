@@ -55,7 +55,7 @@
 ```
 plugins_call_key = ""  # API的KEY
 plugins_call_api_url = ""  # LLM的API地址
-plugins_call_llm: = "Qwen/QwQ-32B" # 用于选择调用插件的LLM,需要支持tools_call
+plugins_call_llm = "Qwen/QwQ-32B" # 用于选择调用插件的LLM,需要支持tools_call
 
 ```
 

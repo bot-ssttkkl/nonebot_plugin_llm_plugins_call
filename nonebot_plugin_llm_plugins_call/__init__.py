@@ -65,16 +65,17 @@ model_id = plugin_config.plugins_call_llm
 new_plugin_info: Dict[str, Any] = {}
 
 def load_plugin_data(json_path: str) -> Dict[str, Any]:
+    global new_plugin_info
     try:
         if not json_path:
-            return {}
+            new_plugin_info =  {}
             
         with open(json_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
-            return {item["module_name"]: item for item in data if "module_name" in item}
+            new_plugin_info =  {item["module_name"]: item for item in data if "module_name" in item}
             
     except Exception as e:
-        return {}
+        new_plugin_info =  {}
 
     
 
@@ -138,6 +139,7 @@ def generate_tools_json(plugin_set, blacklist=None):
             command_desc=""
         )
         tools.append(tool)
+        logger.info(f"成功读取插件 {plugin.module_name} 的元数据")
 
     return tools
 

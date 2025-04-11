@@ -56,7 +56,7 @@ client_kwargs = {
 if plugin_config.plugins_call_api_url:
     client_kwargs["base_url"] = plugin_config.plugins_call_api_url
 if plugin_config.plugins_call_proxy_url:
-    client_kwargs["http_client"] = httpx.Client(proxy=plugin_config.plugins_call_proxy_url)
+    client_kwargs["http_client"] = httpx.AsyncClient(proxy=plugin_config.plugins_call_proxy_url)
 client = AsyncOpenAI(**client_kwargs)
 
 model_id = plugin_config.plugins_call_llm

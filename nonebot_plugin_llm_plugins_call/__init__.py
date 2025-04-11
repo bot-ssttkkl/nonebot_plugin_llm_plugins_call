@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import json
+import httpx
 import nonebot
 import re
 import yaml
@@ -48,12 +49,15 @@ plugin_config = get_plugin_config(Config)
 
 if not plugin_config.plugins_call_key:
     raise ConfigError("请配置plugins_call大模型使用的KEY")
+
+client_kwargs = {
+    "api_key": plugin_config.plugins_call_key
+}
 if plugin_config.plugins_call_api_url:
-    client = AsyncOpenAI(
-        api_key=plugin_config.plugins_call_key, base_url=plugin_config.plugins_call_api_url
-    )
-else:
-    client = AsyncOpenAI(api_key=plugin_config.plugins_call_key)
+    client_kwargs["base_url"] = plugin_config.plugins_call_api_url
+if plugin_config.plugins_call_proxy_url:
+    client_kwargs["http_client"] = httpx.Client(proxy=plugin_config.plugins_call_proxy_url)
+client = AsyncOpenAI(**client_kwargs)
 
 model_id = plugin_config.plugins_call_llm
 

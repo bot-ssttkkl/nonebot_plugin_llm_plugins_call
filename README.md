@@ -23,6 +23,7 @@
 <img src="demo2.jpg" width="40%">
 <img src="demo3.jpg" width="40%">
 <img src="demo4.jpg" width="40%">
+<img src="demo5.png" width="40%">
 
 
 # 安装

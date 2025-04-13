@@ -213,14 +213,23 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
                 rule = getattr(m, 'rule', None)
                 is_tome = ""
                 call_ = ""
+                prefix_prompt = ""
+                is_command = False
                 if rule:
                     for checker in rule.checkers:
                         call = checker.call
                         if str(call) == "ToMe()":
-                            is_tome = "，需要@触发，请在最终命令前加上@"
+                            is_tome = "，需要@触发，请在最终命令最前面加上@"
                             continue
-                        call_ += str(call)  
-                    rule_str_ = f"命令{count}:触发规则:{call_}{is_tome}"
+                        if str(call).startswith("Command") and prefix != "":
+                            is_command = True    
+                        call_ += str(call)
+                    if is_command and is_tome != "":
+                        prefix_prompt = f"还需要前缀触发，在@后面加上{prefix}"
+                    elif is_command and is_tome == "":
+                        prefix_prompt = f"需要前缀触发，在命令前加上{prefix}"
+                        
+                    rule_str_ = f"命令{count}:触发规则:{call_}{is_tome}{prefix_prompt}"
                     rules.append(rule_str_)
                     count += 1
 
@@ -233,9 +242,14 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
                     command_desc=f"触发规则：\n{rule_str}"
                 )]
 
-            messages_ = [{'role': 'user', 'content': f"""分析用户的自然语言，结合提供的tool(插件)，从自然语言中提取用于触发该插件的参数，结合参数构造纯文本触发命令。插件的功能描述和命令触发规则已经提供，需要你分析功能描述，结合命令触发规则构造规则出带参数的能够精准触发该插件的命令。一个插件可能有对应不同功能的多条命令匹配规则，请你选择最合适的。参考功能介绍，结合用户自然语言中暗含的参数来构造命令（提取的参数最贴近用户的自然语言中的语义），并且最终构造的命令要符合触发规则规则。需要特别注意前缀问题，由于各插件的插件的功能描述里面可能带有默认前缀斜杠或者其他前缀，不同用户的前缀可能设定不一致，有的用户可能删除了命令前缀或者换成别的前缀(可以为空)，所以不能只根据命令用法构造命令，必须结合规则和当前用户设置的命令前缀来构造最终的触发命令文本。每条命令的格式为：前缀 + 满足触发规则的带参数的字符串。你必须使用tools_call功能，在调用的工具的参数里面回复我，不能直接回复我。\n当前用户设置的前缀为(前缀使用<prefix></prefix>包裹):<prefix>" + str(prefix) + f"</prefix>\n 用户的自然语言为：{content}"""}]
+            # if prefix != "":
+            #     prefix_prompt = f"注意，如果触发规则类型为Command()，你需要在命令的最前面（如果命令需要@触发，则在@的后面）加上前缀{prefix}"
+            # else:
+            #     prefix_prompt = ""
+                
+            messages_ = [{'role': 'user', 'content': f"""分析用户的自然语言，结合提供的tool(插件)，从自然语言中提取用于触发该插件的参数，结合参数构造纯文本触发命令。插件的功能描述和命令触发规则已经提供，需要你分析功能描述，结合命令触发规则构造规则出带参数的能够精准触发该插件的命令。一个插件可能有对应不同功能的多条命令匹配规则，请你选择最合适的。参考功能介绍，结合用户自然语言中暗含的参数来构造命令（提取的参数最贴近用户的自然语言中的语义），并且最终构造的命令要符合触发规则。需要特别注意前缀问题，插件的功能描述介绍了该插件的功能列表，列表中的命令可能带有一些前缀。但是在实际使用中，不同用户的前缀可能设定不一致，有的用户可能删除了命令前缀或者换成别的前缀(可以为空)，功能描述仅供判断选择哪个功能进行触发和参考构造命令所需要的参数，选择好功能后必须按照触发规则来构造最终的触发命令文本。另外你必须使用tools_call功能，在调用的工具的参数里面回复我，不能直接回复我。\n 用户的自然语言为：{content}"""}]
 
-
+            
             response_ = await client.chat.completions.create(
                 model=model_id,
                 messages=messages_,
